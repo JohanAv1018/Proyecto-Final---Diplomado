@@ -264,21 +264,22 @@ with tab1:
     col_f1, col_f2 = st.columns([1, 1])
     with col_f1:
         depts_sel = st.multiselect(
-            "Seleccionar departamentos (vacío = todos)",
+            "Filtrar departamentos en el gráfico (vacío = todos)",
             options=lista_depts,
             default=[]
         )
+    with col_f2:
         variables_sel = st.multiselect(
-            "Seleccionar variables (vacío = todas)",
+            "Seleccionar variables en la tabla (vacío = todas)",
             options=variables_ipm,
             default=[]
         )
 
-    df_filtrado = df.copy()
-    if depts_sel:
-        df_filtrado = df_filtrado[df_filtrado['DEPT_NOMBRE'].isin(depts_sel)]
-
     vars_a_mostrar = variables_sel if variables_sel else variables_ipm
+
+    df_graf = df.copy()
+    if depts_sel:
+        df_graf = df_graf[df_graf['DEPT_NOMBRE'].isin(depts_sel)]
 
     st.markdown("---")
 
@@ -287,51 +288,47 @@ with tab1:
 
     with col_graf:
         st.markdown("**Privaciones por departamento y variable**")
-        dept_var = df_filtrado.groupby('DEPT_NOMBRE')[vars_a_mostrar].mean()
-        # Limitar a max 20 departamentos para legibilidad
+        dept_var = df_graf.groupby('DEPT_NOMBRE')[variables_ipm].mean()
         if len(dept_var) > 20:
             dept_var = dept_var.head(20)
-        fig, ax = plt.subplots(figsize=(9, max(5, len(dept_var) * 0.45)))
         dept_var_sorted = dept_var.mean(axis=1).sort_values(ascending=True)
         dept_var = dept_var.loc[dept_var_sorted.index]
         x = np.arange(len(dept_var))
-        n_vars = len(vars_a_mostrar)
+        n_vars = len(variables_ipm)
         bar_width = 0.8 / n_vars
         colors_vars = plt.cm.tab20.colors
-        for i, var in enumerate(vars_a_mostrar):
-            if var in dept_var.columns:
-                offset = (i - n_vars / 2) * bar_width + bar_width / 2
-                ax.barh(x + offset, dept_var[var].values, height=bar_width,
-                        label=var, color=colors_vars[i % len(colors_vars)], alpha=0.85)
+        fig, ax = plt.subplots(figsize=(9, max(5, len(dept_var) * 0.45)))
+        for i, var in enumerate(variables_ipm):
+            offset = (i - n_vars / 2) * bar_width + bar_width / 2
+            ax.barh(x + offset, dept_var[var].values, height=bar_width,
+                    label=var, color=colors_vars[i % len(colors_vars)], alpha=0.85)
         ax.set_yticks(x)
         ax.set_yticklabels(dept_var.index, fontsize=8)
         ax.set_xlabel("Proporción de hogares con privación", fontsize=10)
         ax.set_xlim(0, 1.15)
         ax.grid(axis='x', alpha=0.3)
-        if n_vars <= 10:
-            ax.legend(fontsize=7, loc='lower right', ncol=2)
+        ax.legend(fontsize=6.5, loc='lower right', ncol=2)
         plt.tight_layout()
         st.pyplot(fig)
         plt.close()
 
     with col_tabla:
-        st.markdown("**Ranking por IPM promedio**")
-        ranking = df_filtrado.groupby('DEPT_NOMBRE')[vars_a_mostrar + ['IPM', 'POBRE']].mean().reset_index()
-        ranking_tabla = ranking[['DEPT_NOMBRE', 'IPM', 'POBRE']].copy()
-        ranking_tabla.columns = ['Departamento', 'IPM promedio', '% pobreza']
-        ranking_tabla['IPM promedio'] = ranking_tabla['IPM promedio'].round(3)
-        ranking_tabla['% pobreza'] = (ranking_tabla['% pobreza'] * 100).round(1)
-        ranking_tabla = ranking_tabla.sort_values('IPM promedio', ascending=False)
+        st.markdown("**Ranking por variable seleccionada**")
+        ranking_tabla = df.groupby('DEPT_NOMBRE')[vars_a_mostrar].mean().reset_index()
+        ranking_tabla['Promedio variables'] = ranking_tabla[vars_a_mostrar].mean(axis=1).round(3)
+        ranking_tabla = ranking_tabla[['DEPT_NOMBRE', 'Promedio variables']].copy()
+        ranking_tabla.columns = ['Departamento', 'Privación promedio']
+        ranking_tabla = ranking_tabla.sort_values('Privación promedio', ascending=False)
         st.dataframe(ranking_tabla, use_container_width=True, hide_index=True, height=460)
 
     with col_cards:
-        st.markdown("**Indicadores del filtro**")
-        n_hogares = len(df_filtrado)
-        pct_pobres = df_filtrado['POBRE'].mean() * 100
-        ipm_prom = df_filtrado['IPM'].mean()
-        n_depts = df_filtrado['DEPARTAMENTO'].nunique()
-        var_critica = df_filtrado[vars_a_mostrar].mean().idxmax() if vars_a_mostrar else "—"
-        var_critica_val = df_filtrado[vars_a_mostrar].mean().max() if vars_a_mostrar else 0
+        st.markdown("**Indicadores del gráfico**")
+        n_hogares = len(df_graf)
+        pct_pobres = df_graf['POBRE'].mean() * 100
+        ipm_prom = df_graf['IPM'].mean()
+        n_depts = df_graf['DEPARTAMENTO'].nunique()
+        var_critica = df_graf[variables_ipm].mean().idxmax()
+        var_critica_val = df_graf[variables_ipm].mean().max()
 
         tarjetas = [
             (f"{n_hogares:,}", "Hogares en selección"),
@@ -341,7 +338,7 @@ with tab1:
         ]
         for val, label in tarjetas:
             st.markdown(f"<div class='metric-card' style='margin-bottom:10px'><div class='metric-value'>{val}</div><div class='metric-label'>{label}</div></div>", unsafe_allow_html=True)
-        st.markdown(f"<div class='metric-card' style='margin-bottom:10px;border-left:4px solid #e74c3c'><div class='metric-value' style='font-size:1.1rem;color:#c0392b'>{var_critica}</div><div class='metric-label'>Variable con mayor privación ({var_critica_val:.2f})</div></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='metric-card' style='margin-bottom:10px;border-left:4px solid #e74c3c'><div class='metric-value' style='font-size:1.1rem;color:#c0392b'>{var_critica}</div><div class='metric-label'>Variable más crítica ({var_critica_val:.2f})</div></div>", unsafe_allow_html=True)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -413,16 +410,6 @@ with tab2:
     st.pyplot(fig)
     plt.close()
 
-    st.markdown("---")
-    st.markdown("**Perfiles identificados por clustering**")
-    cols_perf_acp = st.columns(3)
-    for c, col in enumerate(cols_perf_acp):
-        with col:
-            st.markdown(f"""<div class='interp-box' style='height:100%'>
-            <b style='color:#1a4a7a'>Cluster {c} — {PERFILES[c]['nombre']}</b><br><br>
-            {PERFILES[c]['desc']}
-            </div>""", unsafe_allow_html=True)
-
 
 # ════════════════════════════════════════════════════════════════════════════
 # PESTAÑA 3 — CLUSTERING
@@ -448,7 +435,7 @@ with tab3:
     st.markdown("---")
 
     labels = labels_km if metodo == "K-Means" else labels_hc
-    perfiles_activos = PERFILES if metodo == "K-Means" else PERFILES_HC
+    perfiles_activos = PERFILES
 
     col1, col2 = st.columns(2)
 
