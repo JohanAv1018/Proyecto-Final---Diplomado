@@ -19,7 +19,6 @@ from sklearn.metrics import silhouette_score
 from scipy.cluster.hierarchy import linkage, fcluster, dendrogram
 from scipy.spatial.distance import cdist
 
-# ── Configuración de página ──────────────────────────────────────────────────
 st.set_page_config(
     page_title="Pobreza Multidimensional Colombia",
     page_icon="🇨🇴",
@@ -28,30 +27,31 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    /* Fuente general un poco más grande */
     html, body, [class*="css"] { font-size: 15px; }
 
-    /* Header centrado */
     .header-container {
         text-align: center;
-        padding: 2rem 0 1rem 0;
+        padding: 2rem 0 0.5rem 0;
     }
     .header-title {
-        font-size: 2.4rem;
-        font-weight: 800;
+        font-size: 3rem;
+        font-weight: 900;
         color: #1a4a7a;
-        margin-bottom: 0.3rem;
+        margin-bottom: 0.4rem;
+        letter-spacing: -0.5px;
     }
     .header-subtitle {
         font-size: 1rem;
         color: #666;
+        margin-bottom: 0.2rem;
+    }
+    .header-authors {
+        font-size: 0.88rem;
+        color: #999;
+        font-style: italic;
     }
 
-    /* Pestañas más grandes y ocupando todo el ancho */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 0px;
-        width: 100%;
-    }
+    .stTabs [data-baseweb="tab-list"] { gap: 0px; width: 100%; }
     .stTabs [data-baseweb="tab"] {
         flex: 1;
         justify-content: center;
@@ -66,25 +66,16 @@ st.markdown("""
         color: #1a4a7a;
     }
 
-    /* Métricas */
     .metric-card {
         background-color: #f0f4f8;
         border-radius: 10px;
-        padding: 18px;
+        padding: 16px;
         text-align: center;
+        margin-bottom: 12px;
     }
-    .metric-value {
-        font-size: 2rem;
-        font-weight: bold;
-        color: #1a4a7a;
-    }
-    .metric-label {
-        font-size: 0.9rem;
-        color: #555;
-        margin-top: 4px;
-    }
+    .metric-value { font-size: 1.7rem; font-weight: bold; color: #1a4a7a; }
+    .metric-label { font-size: 0.85rem; color: #555; margin-top: 4px; }
 
-    /* Cajas de interpretación */
     .interp-box {
         background-color: #f8f9fa;
         border-left: 4px solid #1a4a7a;
@@ -96,9 +87,16 @@ st.markdown("""
         line-height: 1.6;
     }
 
-    /* Radio buttons más grandes */
-    .stRadio > div { gap: 16px; }
-    .stRadio label { font-size: 1rem !important; font-weight: 600; }
+    .perfil-card {
+        background-color: #f8f9fa;
+        border-top: 4px solid #1a4a7a;
+        border-radius: 0 0 8px 8px;
+        padding: 14px 16px;
+        font-size: 0.9rem;
+        color: #333;
+        line-height: 1.6;
+        height: 100%;
+    }
 
     section[data-testid="stSidebar"] { display: none; }
 </style>
@@ -125,25 +123,37 @@ nombres_dept = {
 
 COLORS = ['#e74c3c', '#3498db', '#2ecc71']
 
-PERFILES = {
+PERFILES_KM = {
     0: {
         "nombre": "Baja privación",
-        "desc": "Agrupa el 79% de los hogares. El empleo informal es alto (0.78), pero las privaciones en educación, vivienda y servicios son bajas. Son los hogares relativamente mejor posicionados dentro de la muestra del IPM.",
-        "variables_clave": ["empleo_formal"]
+        "desc": "Agrupa el 79% de los hogares. El empleo informal es alto (0.78), pero las privaciones en educación, vivienda y servicios son bajas. Son los hogares relativamente mejor posicionados dentro de la muestra del IPM."
     },
     1: {
         "nombre": "Privación educativa",
-        "desc": "El perfil más pequeño (3.3%) pero el más crítico: concentra el mayor índice de pobreza (60%) y sus hogares presentan rezago escolar (0.81), inasistencia (0.72) y trabajo infantil (0.47) de forma simultánea. La pobreza aquí tiene una dimensión intergeneracional clara.",
-        "variables_clave": ["rezago_escolar", "inasistencia_escolar", "trabajo_infantil"]
+        "desc": "El perfil más pequeño (3.3%) pero el más crítico: concentra el mayor índice de pobreza (60%) y sus hogares presentan rezago escolar (0.81), inasistencia (0.72) y trabajo infantil (0.47) de forma simultánea. La pobreza aquí tiene una dimensión intergeneracional clara."
     },
     2: {
         "nombre": "Déficit de infraestructura",
-        "desc": "Representa el 17.5% de los hogares con carencias marcadas en acueducto (0.66), alcantarillado (0.66) y materiales de vivienda (pisos 0.45). Territorialmente concentrado en la periferia del país.",
-        "variables_clave": ["acueducto", "alcantarillado", "pisos"]
+        "desc": "Representa el 17.5% de los hogares con carencias marcadas en acueducto (0.66), alcantarillado (0.66) y materiales de vivienda (pisos 0.45). Territorialmente concentrado en la periferia del país."
     }
 }
 
-# ── Carga y procesamiento (cacheado) ─────────────────────────────────────────
+PERFILES_HC = {
+    0: {
+        "nombre": "Privación educativa",
+        "desc": "Agrupa los hogares con mayores privaciones educativas. La inasistencia escolar (0.72), rezago escolar (0.81) y trabajo infantil (0.47) son sus valores más altos."
+    },
+    1: {
+        "nombre": "Baja privación",
+        "desc": "El grupo con menor privación general. Los valores son bajos en casi todas las dimensiones, con excepción del empleo informal (0.79). Son los hogares relativamente mejor posicionados de la muestra."
+    },
+    2: {
+        "nombre": "Déficit mixto",
+        "desc": "Presenta un perfil más disperso con privaciones moderadas en vivienda (paredes 0.24, hacinamiento 0.29), servicios públicos (acueducto 0.30, alcantarillado 0.33) y salud (aseguramiento 0.23, barreras 0.15)."
+    }
+}
+
+# ── Carga y procesamiento ────────────────────────────────────────────────────
 @st.cache_data(show_spinner=False)
 def cargar_datos():
     url = "https://raw.githubusercontent.com/JohanAv1018/Proyecto-Final---Diplomado/main/IPM2025.csv"
@@ -219,11 +229,12 @@ with st.spinner("Cargando datos y procesando modelos..."):
 ipm_vals = df['IPM'].values[idx]
 lista_depts = sorted(df['DEPT_NOMBRE'].dropna().unique().tolist())
 
-# ── Header centrado ──────────────────────────────────────────────────────────
+# ── Header ───────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class='header-container'>
     <div class='header-title'>Pobreza Multidimensional en Colombia</div>
     <div class='header-subtitle'>Análisis de clustering aplicado al Índice de Pobreza Multidimensional (IPM) · ECV 2025 · DANE</div>
+    <div class='header-authors'>Ana Sofía Salazar Álvarez &nbsp;·&nbsp; Johan Steven Avilan Peñaloza</div>
 </div>
 """, unsafe_allow_html=True)
 st.divider()
@@ -236,56 +247,79 @@ tab1, tab2, tab3, tab4 = st.tabs(["📋  Datos", "📊  ACP", "🔵  Clustering"
 # PESTAÑA 1 — DATOS
 # ════════════════════════════════════════════════════════════════════════════
 with tab1:
-    st.subheader("Resumen general")
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.markdown(f"<div class='metric-card'><div class='metric-value'>{len(df):,}</div><div class='metric-label'>Total hogares</div></div>", unsafe_allow_html=True)
-    with col2:
-        st.markdown(f"<div class='metric-card'><div class='metric-value'>{df['POBRE'].mean()*100:.1f}%</div><div class='metric-label'>Hogares en pobreza</div></div>", unsafe_allow_html=True)
-    with col3:
-        st.markdown(f"<div class='metric-card'><div class='metric-value'>{df['IPM'].mean():.3f}</div><div class='metric-label'>IPM promedio</div></div>", unsafe_allow_html=True)
-    with col4:
-        st.markdown(f"<div class='metric-card'><div class='metric-value'>{df['DEPARTAMENTO'].nunique()}</div><div class='metric-label'>Departamentos</div></div>", unsafe_allow_html=True)
 
-    st.markdown("---")
-    st.subheader("Exploración por filtros")
-
-    col_f1, col_f2 = st.columns([2, 1])
+    # Filtros
+    col_f1, col_f2 = st.columns([1, 1])
     with col_f1:
         depts_sel = st.multiselect(
-            "Seleccionar departamentos (vacío = todos)",
+            "Filtrar por departamentos",
             options=lista_depts,
-            default=[]
+            default=[],
+            placeholder="Todos los departamentos"
         )
     with col_f2:
         variable_sel = st.selectbox("Variable para ranking", variables_ipm)
 
+    # Dataset filtrado
     df_filtrado = df.copy()
     if depts_sel:
         df_filtrado = df_filtrado[df_filtrado['DEPT_NOMBRE'].isin(depts_sel)]
 
-    col_a, col_b = st.columns(2)
+    st.markdown("---")
 
-    with col_a:
-        st.markdown("**Proporción de privaciones**")
-        privaciones = df_filtrado[variables_ipm].mean().sort_values(ascending=True)
-        fig, ax = plt.subplots(figsize=(7, 5))
-        bars = ax.barh(privaciones.index, privaciones.values, color='#4C72B0', alpha=0.8)
-        ax.bar_label(bars, fmt='%.2f', padding=3, fontsize=8)
-        ax.set_xlabel("Proporción de hogares con privación", fontsize=11)
-        ax.set_xlim(0, 1.1)
-        ax.tick_params(labelsize=10)
-        ax.grid(axis='x', alpha=0.3)
+    # Layout: 50% gráfico | 25% tabla | 25% tarjetas
+    col_graf, col_tabla, col_cards = st.columns([2, 1, 1])
+
+    with col_graf:
+        st.markdown("**Privaciones por departamento**")
+        # Heatmap departamento x variable
+        heatmap_data = df_filtrado.groupby('DEPT_NOMBRE')[variables_ipm].mean()
+        fig, ax = plt.subplots(figsize=(8, max(5, len(heatmap_data) * 0.35)))
+        sns.heatmap(
+            heatmap_data,
+            ax=ax,
+            cmap='YlOrRd',
+            annot=len(heatmap_data) <= 10,
+            fmt='.2f',
+            linewidths=0.3,
+            cbar_kws={'label': 'Proporción con privación'},
+            annot_kws={'size': 7}
+        )
+        ax.set_xlabel("")
+        ax.set_ylabel("")
+        ax.tick_params(axis='x', rotation=45, labelsize=8)
+        ax.tick_params(axis='y', labelsize=9)
         plt.tight_layout()
         st.pyplot(fig)
         plt.close()
 
-    with col_b:
-        st.markdown(f"**Ranking de departamentos — {variable_sel}**")
-        ranking = df.groupby('DEPT_NOMBRE')[variable_sel].mean().sort_values(ascending=False).reset_index()
-        ranking.columns = ['Departamento', 'Proporción con privación']
-        ranking['Proporción con privación'] = ranking['Proporción con privación'].round(3)
-        st.dataframe(ranking, use_container_width=True, hide_index=True, height=420)
+    with col_tabla:
+        st.markdown(f"**Ranking por {variable_sel}**")
+        ranking = df_filtrado.groupby('DEPT_NOMBRE')[variable_sel].mean().sort_values(ascending=False).reset_index()
+        ranking.columns = ['Departamento', 'Proporción']
+        ranking['Proporción'] = ranking['Proporción'].round(3)
+        st.dataframe(ranking, use_container_width=True, hide_index=True, height=450)
+
+    with col_cards:
+        st.markdown("**Resumen**")
+        var_mayor = df_filtrado[variables_ipm].mean().idxmax()
+        val_mayor = df_filtrado[variables_ipm].mean().max()
+
+        st.markdown(f"""<div class='metric-card'>
+            <div class='metric-value'>{len(df_filtrado):,}</div>
+            <div class='metric-label'>Hogares</div></div>""", unsafe_allow_html=True)
+
+        st.markdown(f"""<div class='metric-card'>
+            <div class='metric-value'>{df_filtrado['POBRE'].mean()*100:.1f}%</div>
+            <div class='metric-label'>En pobreza</div></div>""", unsafe_allow_html=True)
+
+        st.markdown(f"""<div class='metric-card'>
+            <div class='metric-value'>{df_filtrado['IPM'].mean():.3f}</div>
+            <div class='metric-label'>IPM promedio</div></div>""", unsafe_allow_html=True)
+
+        st.markdown(f"""<div class='metric-card'>
+            <div class='metric-value' style='font-size:1.1rem'>{var_mayor.replace('_', ' ')}</div>
+            <div class='metric-label'>Mayor privación ({val_mayor:.2f})</div></div>""", unsafe_allow_html=True)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -315,7 +349,6 @@ with tab2:
         plt.tight_layout()
         st.pyplot(fig)
         plt.close()
-
         st.markdown(f"""<div class='interp-box'>
         La varianza se distribuye de forma gradual entre las 15 componentes — no hay un "codo" claro,
         lo cual es típico de variables binarias con correlaciones moderadas.
@@ -335,7 +368,6 @@ with tab2:
         plt.tight_layout()
         st.pyplot(fig)
         plt.close()
-
         st.markdown("""<div class='interp-box'>
         <b>PC1</b> resume el déficit de infraestructura: acueducto, alcantarillado y pisos son las variables con mayor carga.<br><br>
         <b>PC2</b> captura la brecha educativa en menores: inasistencia escolar, rezago y trabajo infantil tienen los valores más altos.<br><br>
@@ -345,14 +377,6 @@ with tab2:
 
     st.markdown("---")
     st.markdown("**Proyección t-SNE — hogares coloreados por IPM**")
-    st.markdown("""<div class='interp-box'>
-    t-SNE proyecta los 87,060 hogares (representados por una muestra de 10,000) desde 9 dimensiones a 2,
-    preservando qué hogares son similares entre sí. El color indica el nivel de IPM:
-    tonos más oscuros corresponden a mayor privación. La ausencia de grupos perfectamente separados
-    es normal — la pobreza es un fenómeno continuo — pero sí se aprecian zonas con mayor concentración
-    de privación, lo que anticipa la estructura de los clusters.
-    </div>""", unsafe_allow_html=True)
-
     fig, ax = plt.subplots(figsize=(10, 4.5))
     scatter = ax.scatter(X_tsne[:, 0], X_tsne[:, 1], c=ipm_vals,
                          cmap='YlOrRd', alpha=0.55, s=7)
@@ -371,22 +395,36 @@ with tab2:
 with tab3:
     st.subheader("Resultados del Clustering")
 
-    st.markdown("### Seleccionar método")
-    metodo = st.radio("", ["K-Means", "Clustering Jerárquico"], horizontal=True, label_visibility="collapsed")
-    st.markdown("---")
+    col_btn1, col_btn2, _ = st.columns([1, 1, 2])
+    with col_btn1:
+        btn_km = st.button("🔵  K-Means", use_container_width=True,
+                           type="primary" if st.session_state.get('metodo', 'km') == 'km' else "secondary")
+    with col_btn2:
+        btn_hc = st.button("🌿  Clustering Jerárquico", use_container_width=True,
+                           type="primary" if st.session_state.get('metodo', 'km') == 'hc' else "secondary")
 
-    labels = labels_km if metodo == "K-Means" else labels_hc
+    if btn_km:
+        st.session_state['metodo'] = 'km'
+    if btn_hc:
+        st.session_state['metodo'] = 'hc'
+
+    metodo_actual = st.session_state.get('metodo', 'km')
+    labels = labels_km if metodo_actual == 'km' else labels_hc
+    perfiles = PERFILES_KM if metodo_actual == 'km' else PERFILES_HC
+    nombre_metodo = "K-Means" if metodo_actual == 'km' else "Clustering Jerárquico"
+
+    st.markdown("---")
 
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown(f"**Proyección t-SNE — {metodo}**")
+        st.markdown(f"**Proyección t-SNE — {nombre_metodo}**")
         labels_muestra = labels[idx]
         fig, ax = plt.subplots(figsize=(7, 5))
         for c in range(3):
             mask = labels_muestra == c
             ax.scatter(X_tsne[mask, 0], X_tsne[mask, 1], c=COLORS[c],
-                       label=f'Cluster {c} — {PERFILES[c]["nombre"]}',
+                       label=f'Cluster {c} — {perfiles[c]["nombre"]}',
                        alpha=0.45, s=7, edgecolors='none')
         ax.set_xlabel("t-SNE 1", fontsize=11)
         ax.set_ylabel("t-SNE 2", fontsize=11)
@@ -417,9 +455,9 @@ with tab3:
     cols_perf = st.columns(3)
     for c, col in enumerate(cols_perf):
         with col:
-            st.markdown(f"""<div class='interp-box'>
-            <b style='color:#1a4a7a'>Cluster {c} — {PERFILES[c]['nombre']}</b><br><br>
-            {PERFILES[c]['desc']}
+            st.markdown(f"""<div class='perfil-card'>
+            <b style='color:#1a4a7a; font-size:1rem'>Cluster {c} — {perfiles[c]['nombre']}</b><br><br>
+            {perfiles[c]['desc']}
             </div>""", unsafe_allow_html=True)
 
     st.markdown("---")
@@ -435,12 +473,12 @@ with tab3:
     tabla['IPM_promedio'] = tabla['IPM_promedio'].round(3)
     tabla['Pct_pobres'] = (tabla['Pct_pobres'] * 100).round(1)
     tabla['% del total'] = tabla['% del total'].round(1)
-    tabla['Perfil'] = tabla['cluster'].map({c: PERFILES[c]['nombre'] for c in range(3)})
+    tabla['Perfil'] = tabla['cluster'].map({c: perfiles[c]['nombre'] for c in range(3)})
     tabla = tabla[['cluster', 'Perfil', 'Hogares', '% del total', 'IPM_promedio', 'Pct_pobres']]
     tabla.columns = ['Cluster', 'Perfil', 'Hogares', '% del total', 'IPM promedio', '% en pobreza']
     st.dataframe(tabla, use_container_width=True, hide_index=True)
 
-    if metodo == "Clustering Jerárquico":
+    if metodo_actual == 'hc':
         st.markdown("---")
         st.markdown("**Dendrograma**")
         fig, ax = plt.subplots(figsize=(12, 4))
@@ -520,7 +558,6 @@ with tab4:
     with col_info:
         st.markdown("**Interpretación**")
         st.markdown(f"<div class='interp-box'>{descripciones_territorio[c]}</div>", unsafe_allow_html=True)
-
         st.markdown("####")
         st.markdown("**Top 10 departamentos**")
         top10 = prop.copy()
