@@ -267,8 +267,8 @@ with tab1:
 
     st.markdown("---")
 
-    # Layout 50 / 25 / 25
-    col_graf, col_tabla, col_cards = st.columns([2, 1, 1])
+    # Layout 60 / 20 / 20
+    col_graf, col_tabla, col_cards = st.columns([3, 1, 1])
 
     with col_graf:
         st.markdown("**Proporción de privaciones por variable**")
@@ -298,8 +298,6 @@ with tab1:
         pct_pobres = df['POBRE'].mean() * 100
         ipm_prom = df['IPM'].mean()
         n_depts = df['DEPARTAMENTO'].nunique()
-        var_critica = df[variables_ipm].mean().idxmax()
-        var_critica_val = df[variables_ipm].mean().max()
 
         tarjetas = [
             (f"{n_hogares:,}", "Total hogares"),
@@ -309,7 +307,6 @@ with tab1:
         ]
         for val, label in tarjetas:
             st.markdown(f"<div class='metric-card' style='margin-bottom:10px'><div class='metric-value'>{val}</div><div class='metric-label'>{label}</div></div>", unsafe_allow_html=True)
-        st.markdown(f"<div class='metric-card' style='margin-bottom:10px;border-left:4px solid #e74c3c'><div class='metric-value' style='font-size:1.1rem;color:#c0392b'>{var_critica}</div><div class='metric-label'>Variable más crítica ({var_critica_val:.2f})</div></div>", unsafe_allow_html=True)
 
 
 # ════════════════════════════════════════════════════════════════════════════
