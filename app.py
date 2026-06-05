@@ -261,25 +261,9 @@ tab1, tab2, tab3, tab4 = st.tabs(["📋  Datos", "📊  ACP", "🔵  Clustering"
 with tab1:
     st.subheader("Exploración por filtros")
 
-    col_f1, col_f2 = st.columns([1, 1])
+    col_f1, col_f2 = st.columns([1, 3])
     with col_f1:
-        depts_sel = st.multiselect(
-            "Filtrar departamentos en el gráfico (vacío = todos)",
-            options=lista_depts,
-            default=[]
-        )
-    with col_f2:
-        variables_sel = st.multiselect(
-            "Seleccionar variables en la tabla (vacío = todas)",
-            options=variables_ipm,
-            default=[]
-        )
-
-    vars_a_mostrar = variables_sel if variables_sel else variables_ipm
-
-    df_graf = df.copy()
-    if depts_sel:
-        df_graf = df_graf[df_graf['DEPT_NOMBRE'].isin(depts_sel)]
+        variable_sel = st.selectbox("Variable para ranking de departamentos", variables_ipm)
 
     st.markdown("---")
 
@@ -287,54 +271,41 @@ with tab1:
     col_graf, col_tabla, col_cards = st.columns([2, 1, 1])
 
     with col_graf:
-        st.markdown("**Privaciones por departamento y variable**")
-        dept_var = df_graf.groupby('DEPT_NOMBRE')[variables_ipm].mean()
-        if len(dept_var) > 20:
-            dept_var = dept_var.head(20)
-        dept_var_sorted = dept_var.mean(axis=1).sort_values(ascending=True)
-        dept_var = dept_var.loc[dept_var_sorted.index]
-        x = np.arange(len(dept_var))
-        n_vars = len(variables_ipm)
-        bar_width = 0.8 / n_vars
-        colors_vars = plt.cm.tab20.colors
-        fig, ax = plt.subplots(figsize=(9, max(5, len(dept_var) * 0.45)))
-        for i, var in enumerate(variables_ipm):
-            offset = (i - n_vars / 2) * bar_width + bar_width / 2
-            ax.barh(x + offset, dept_var[var].values, height=bar_width,
-                    label=var, color=colors_vars[i % len(colors_vars)], alpha=0.85)
-        ax.set_yticks(x)
-        ax.set_yticklabels(dept_var.index, fontsize=8)
-        ax.set_xlabel("Proporción de hogares con privación", fontsize=10)
-        ax.set_xlim(0, 1.15)
+        st.markdown("**Proporción de privaciones por variable**")
+        privaciones = df[variables_ipm].mean().sort_values(ascending=True)
+        fig, ax = plt.subplots(figsize=(8, 5))
+        bars = ax.barh(privaciones.index, privaciones.values, color='#4C72B0', alpha=0.8)
+        ax.bar_label(bars, fmt='%.2f', padding=3, fontsize=8)
+        ax.set_xlabel("Proporción de hogares con privación", fontsize=11)
+        ax.set_xlim(0, 1.1)
+        ax.tick_params(labelsize=10)
         ax.grid(axis='x', alpha=0.3)
-        ax.legend(fontsize=6.5, loc='lower right', ncol=2)
         plt.tight_layout()
         st.pyplot(fig)
         plt.close()
 
     with col_tabla:
-        st.markdown("**Ranking por variable seleccionada**")
-        ranking_tabla = df.groupby('DEPT_NOMBRE')[vars_a_mostrar].mean().reset_index()
-        ranking_tabla['Promedio variables'] = ranking_tabla[vars_a_mostrar].mean(axis=1).round(3)
-        ranking_tabla = ranking_tabla[['DEPT_NOMBRE', 'Promedio variables']].copy()
-        ranking_tabla.columns = ['Departamento', 'Privación promedio']
-        ranking_tabla = ranking_tabla.sort_values('Privación promedio', ascending=False)
+        st.markdown(f"**Ranking — {variable_sel}**")
+        ranking_tabla = df.groupby('DEPT_NOMBRE')[variable_sel].mean().reset_index()
+        ranking_tabla.columns = ['Departamento', 'Proporción con privación']
+        ranking_tabla['Proporción con privación'] = ranking_tabla['Proporción con privación'].round(3)
+        ranking_tabla = ranking_tabla.sort_values('Proporción con privación', ascending=False)
         st.dataframe(ranking_tabla, use_container_width=True, hide_index=True, height=460)
 
     with col_cards:
-        st.markdown("**Indicadores del gráfico**")
-        n_hogares = len(df_graf)
-        pct_pobres = df_graf['POBRE'].mean() * 100
-        ipm_prom = df_graf['IPM'].mean()
-        n_depts = df_graf['DEPARTAMENTO'].nunique()
-        var_critica = df_graf[variables_ipm].mean().idxmax()
-        var_critica_val = df_graf[variables_ipm].mean().max()
+        st.markdown("**Indicadores generales**")
+        n_hogares = len(df)
+        pct_pobres = df['POBRE'].mean() * 100
+        ipm_prom = df['IPM'].mean()
+        n_depts = df['DEPARTAMENTO'].nunique()
+        var_critica = df[variables_ipm].mean().idxmax()
+        var_critica_val = df[variables_ipm].mean().max()
 
         tarjetas = [
-            (f"{n_hogares:,}", "Hogares en selección"),
+            (f"{n_hogares:,}", "Total hogares"),
             (f"{pct_pobres:.1f}%", "En pobreza multidimensional"),
-            (f"{ipm_prom:.3f}", "IPM promedio"),
-            (f"{n_depts}", "Departamentos incluidos"),
+            (f"{ipm_prom:.3f}", "IPM promedio nacional"),
+            (f"{n_depts}", "Departamentos"),
         ]
         for val, label in tarjetas:
             st.markdown(f"<div class='metric-card' style='margin-bottom:10px'><div class='metric-value'>{val}</div><div class='metric-label'>{label}</div></div>", unsafe_allow_html=True)
@@ -389,12 +360,20 @@ with tab2:
         st.pyplot(fig)
         plt.close()
 
-        st.markdown("""<div class='interp-box'>
-        <b>PC1</b> resume el déficit de infraestructura: acueducto, alcantarillado y pisos son las variables con mayor carga.<br><br>
-        <b>PC2</b> captura la brecha educativa en menores: inasistencia escolar, rezago y trabajo infantil tienen los valores más altos.<br><br>
-        <b>PC3</b> combina privaciones educativas con condiciones de vivienda, diferenciando entre ambos tipos de carencia.<br><br>
-        <b>PC4</b> está dominada por el aseguramiento en salud (0.67) — es la dimensión de acceso al sistema de salud.
-        </div>""", unsafe_allow_html=True)
+    st.markdown("---")
+    pc_descripciones = [
+        ("PC1", "Déficit de infraestructura", "Acueducto, alcantarillado y pisos son las variables con mayor carga. Resume las carencias en servicios básicos del hogar."),
+        ("PC2", "Brecha educativa en menores", "Inasistencia escolar, rezago y trabajo infantil tienen los valores más altos. Captura la dimensión intergeneracional de la pobreza."),
+        ("PC3", "Privación mixta educativa-vivienda", "Combina privaciones educativas con condiciones de vivienda, diferenciando entre ambos tipos de carencia."),
+        ("PC4", "Acceso al sistema de salud", "Dominada por el aseguramiento en salud (0.67). Es la dimensión de acceso al sistema de salud formal."),
+    ]
+    cols_pc = st.columns(4)
+    for col, (pc, titulo, desc) in zip(cols_pc, pc_descripciones):
+        with col:
+            st.markdown(f"""<div class='interp-box'>
+            <b style='color:#1a4a7a;font-size:1.05rem'>{pc}</b> — <b>{titulo}</b><br><br>
+            {desc}
+            </div>""", unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown("**Proyección t-SNE — hogares coloreados por IPM**")
