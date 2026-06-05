@@ -28,10 +28,49 @@ st.set_page_config(
 
 st.markdown("""
 <style>
+    /* Fuente general un poco más grande */
+    html, body, [class*="css"] { font-size: 15px; }
+
+    /* Header centrado */
+    .header-container {
+        text-align: center;
+        padding: 2rem 0 1rem 0;
+    }
+    .header-title {
+        font-size: 2.4rem;
+        font-weight: 800;
+        color: #1a4a7a;
+        margin-bottom: 0.3rem;
+    }
+    .header-subtitle {
+        font-size: 1rem;
+        color: #666;
+    }
+
+    /* Pestañas más grandes y ocupando todo el ancho */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0px;
+        width: 100%;
+    }
+    .stTabs [data-baseweb="tab"] {
+        flex: 1;
+        justify-content: center;
+        font-size: 1rem;
+        font-weight: 600;
+        padding: 12px 0;
+        border-radius: 0;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #e8f0fe;
+        border-bottom: 3px solid #1a4a7a;
+        color: #1a4a7a;
+    }
+
+    /* Métricas */
     .metric-card {
         background-color: #f0f4f8;
         border-radius: 10px;
-        padding: 16px;
+        padding: 18px;
         text-align: center;
     }
     .metric-value {
@@ -40,10 +79,27 @@ st.markdown("""
         color: #1a4a7a;
     }
     .metric-label {
-        font-size: 0.85rem;
+        font-size: 0.9rem;
         color: #555;
         margin-top: 4px;
     }
+
+    /* Cajas de interpretación */
+    .interp-box {
+        background-color: #f8f9fa;
+        border-left: 4px solid #1a4a7a;
+        padding: 12px 16px;
+        border-radius: 0 8px 8px 0;
+        margin: 10px 0;
+        font-size: 0.92rem;
+        color: #333;
+        line-height: 1.6;
+    }
+
+    /* Radio buttons más grandes */
+    .stRadio > div { gap: 16px; }
+    .stRadio label { font-size: 1rem !important; font-weight: 600; }
+
     section[data-testid="stSidebar"] { display: none; }
 </style>
 """, unsafe_allow_html=True)
@@ -67,12 +123,33 @@ nombres_dept = {
     91: "Amazonas", 94: "Guainía", 95: "Guaviare", 97: "Vaupés", 99: "Vichada"
 }
 
-# ── Carga y procesamiento de datos (cacheado) ────────────────────────────────
+COLORS = ['#e74c3c', '#3498db', '#2ecc71']
+
+PERFILES = {
+    0: {
+        "nombre": "Baja privación",
+        "desc": "Agrupa el 79% de los hogares. El empleo informal es alto (0.78), pero las privaciones en educación, vivienda y servicios son bajas. Son los hogares relativamente mejor posicionados dentro de la muestra del IPM.",
+        "variables_clave": ["empleo_formal"]
+    },
+    1: {
+        "nombre": "Privación educativa",
+        "desc": "El perfil más pequeño (3.3%) pero el más crítico: concentra el mayor índice de pobreza (60%) y sus hogares presentan rezago escolar (0.81), inasistencia (0.72) y trabajo infantil (0.47) de forma simultánea. La pobreza aquí tiene una dimensión intergeneracional clara.",
+        "variables_clave": ["rezago_escolar", "inasistencia_escolar", "trabajo_infantil"]
+    },
+    2: {
+        "nombre": "Déficit de infraestructura",
+        "desc": "Representa el 17.5% de los hogares con carencias marcadas en acueducto (0.66), alcantarillado (0.66) y materiales de vivienda (pisos 0.45). Territorialmente concentrado en la periferia del país.",
+        "variables_clave": ["acueducto", "alcantarillado", "pisos"]
+    }
+}
+
+# ── Carga y procesamiento (cacheado) ─────────────────────────────────────────
 @st.cache_data(show_spinner=False)
 def cargar_datos():
     url = "https://raw.githubusercontent.com/JohanAv1018/Proyecto-Final---Diplomado/main/IPM2025.csv"
     ipm = pd.read_csv(url)
     ipm_analisis = ipm[variables_ipm + ['IPM', 'POBRE', 'DEPARTAMENTO']].copy()
+    ipm_analisis['DEPT_NOMBRE'] = ipm_analisis['DEPARTAMENTO'].map(nombres_dept)
     return ipm_analisis
 
 @st.cache_data(show_spinner=False)
@@ -80,14 +157,11 @@ def procesar_pca(_df):
     X = _df[variables_ipm]
     scaler = StandardScaler()
     X_std = scaler.fit_transform(X)
-
     pca_full = PCA()
     pca_full.fit(X_std)
     var_exp = pca_full.explained_variance_ratio_
     var_cum = np.cumsum(var_exp)
-
     pca_9 = PCA(n_components=9).fit_transform(X_std)
-
     pca_interp = PCA(n_components=9)
     pca_interp.fit(X_std)
     loadings_df = pd.DataFrame(
@@ -95,8 +169,7 @@ def procesar_pca(_df):
         index=variables_ipm,
         columns=['PC1', 'PC2', 'PC3', 'PC4']
     )
-
-    return X, X_std, var_exp, var_cum, pca_9, loadings_df, pca_interp
+    return X, X_std, var_exp, var_cum, pca_9, loadings_df
 
 @st.cache_data(show_spinner=False)
 def calcular_tsne(_pca_9):
@@ -108,11 +181,8 @@ def calcular_tsne(_pca_9):
 
 @st.cache_data(show_spinner=False)
 def calcular_clustering(_pca_9):
-    # K-Means
     km = KMeans(n_clusters=3, random_state=42, n_init=10)
     labels_km = km.fit_predict(_pca_9)
-
-    # Jerárquico
     np.random.seed(42)
     idx_hier = np.random.choice(len(_pca_9), size=5_000, replace=False)
     X_hier = _pca_9[idx_hier]
@@ -121,7 +191,6 @@ def calcular_clustering(_pca_9):
     centroides_hc = np.array([X_hier[labels_hier_muestra == c].mean(axis=0) for c in range(3)])
     distancias = cdist(_pca_9, centroides_hc, metric='euclidean')
     labels_hc = distancias.argmin(axis=1)
-
     return labels_km, labels_hc, Z
 
 @st.cache_data(show_spinner=False)
@@ -142,85 +211,81 @@ def cargar_shapefile():
 # ── Carga ────────────────────────────────────────────────────────────────────
 with st.spinner("Cargando datos y procesando modelos..."):
     df = cargar_datos()
-    X, X_std, var_exp, var_cum, pca_9, loadings_df, pca_interp = procesar_pca(df)
+    X, X_std, var_exp, var_cum, pca_9, loadings_df = procesar_pca(df)
     X_tsne, idx = calcular_tsne(pca_9)
     labels_km, labels_hc, Z = calcular_clustering(pca_9)
     colombia = cargar_shapefile()
 
 ipm_vals = df['IPM'].values[idx]
+lista_depts = sorted(df['DEPT_NOMBRE'].dropna().unique().tolist())
 
-# ── Header ───────────────────────────────────────────────────────────────────
-st.title("🇨🇴 Pobreza Multidimensional en Colombia")
-st.markdown("Análisis de clustering aplicado al Índice de Pobreza Multidimensional (IPM) — ECV 2025, DANE")
+# ── Header centrado ──────────────────────────────────────────────────────────
+st.markdown("""
+<div class='header-container'>
+    <div class='header-title'>Pobreza Multidimensional en Colombia</div>
+    <div class='header-subtitle'>Análisis de clustering aplicado al Índice de Pobreza Multidimensional (IPM) · ECV 2025 · DANE</div>
+</div>
+""", unsafe_allow_html=True)
 st.divider()
 
 # ── Pestañas ─────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4 = st.tabs(["📋 Datos", "📊 ACP", "🔵 Clustering", "🗺️ Territorio"])
+tab1, tab2, tab3, tab4 = st.tabs(["📋  Datos", "📊  ACP", "🔵  Clustering", "🗺️  Territorio"])
 
 
 # ════════════════════════════════════════════════════════════════════════════
 # PESTAÑA 1 — DATOS
 # ════════════════════════════════════════════════════════════════════════════
 with tab1:
-    st.subheader("Resumen del dataset")
-
+    st.subheader("Resumen general")
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.markdown(f"""<div class='metric-card'>
-            <div class='metric-value'>{len(df):,}</div>
-            <div class='metric-label'>Total hogares</div></div>""", unsafe_allow_html=True)
+        st.markdown(f"<div class='metric-card'><div class='metric-value'>{len(df):,}</div><div class='metric-label'>Total hogares</div></div>", unsafe_allow_html=True)
     with col2:
-        st.markdown(f"""<div class='metric-card'>
-            <div class='metric-value'>{df['POBRE'].mean()*100:.1f}%</div>
-            <div class='metric-label'>Hogares en pobreza</div></div>""", unsafe_allow_html=True)
+        st.markdown(f"<div class='metric-card'><div class='metric-value'>{df['POBRE'].mean()*100:.1f}%</div><div class='metric-label'>Hogares en pobreza</div></div>", unsafe_allow_html=True)
     with col3:
-        st.markdown(f"""<div class='metric-card'>
-            <div class='metric-value'>{df['IPM'].mean():.3f}</div>
-            <div class='metric-label'>IPM promedio</div></div>""", unsafe_allow_html=True)
+        st.markdown(f"<div class='metric-card'><div class='metric-value'>{df['IPM'].mean():.3f}</div><div class='metric-label'>IPM promedio</div></div>", unsafe_allow_html=True)
     with col4:
-        st.markdown(f"""<div class='metric-card'>
-            <div class='metric-value'>{df['DEPARTAMENTO'].nunique()}</div>
-            <div class='metric-label'>Departamentos</div></div>""", unsafe_allow_html=True)
+        st.markdown(f"<div class='metric-card'><div class='metric-value'>{df['DEPARTAMENTO'].nunique()}</div><div class='metric-label'>Departamentos</div></div>", unsafe_allow_html=True)
 
-    st.markdown("####")
-    st.subheader("Exploración por departamento")
+    st.markdown("---")
+    st.subheader("Exploración por filtros")
 
-    dept_options = ["Todos"] + sorted(df['DEPARTAMENTO'].map(nombres_dept).dropna().unique().tolist())
-    dept_sel = st.selectbox("Filtrar por departamento", dept_options)
+    col_f1, col_f2 = st.columns([2, 1])
+    with col_f1:
+        depts_sel = st.multiselect(
+            "Seleccionar departamentos (vacío = todos)",
+            options=lista_depts,
+            default=[]
+        )
+    with col_f2:
+        variable_sel = st.selectbox("Variable para ranking", variables_ipm)
 
-    df_vista = df.copy()
-    df_vista['DEPARTAMENTO'] = df_vista['DEPARTAMENTO'].map(nombres_dept)
-
-    if dept_sel != "Todos":
-        df_vista = df_vista[df_vista['DEPARTAMENTO'] == dept_sel]
+    df_filtrado = df.copy()
+    if depts_sel:
+        df_filtrado = df_filtrado[df_filtrado['DEPT_NOMBRE'].isin(depts_sel)]
 
     col_a, col_b = st.columns(2)
 
     with col_a:
         st.markdown("**Proporción de privaciones**")
-        privaciones = df_vista[variables_ipm].mean().sort_values(ascending=True)
+        privaciones = df_filtrado[variables_ipm].mean().sort_values(ascending=True)
         fig, ax = plt.subplots(figsize=(7, 5))
-        ax.barh(privaciones.index, privaciones.values, color='#4C72B0', alpha=0.8)
-        ax.set_xlabel("Proporción de hogares con privación")
-        ax.set_xlim(0, 1)
+        bars = ax.barh(privaciones.index, privaciones.values, color='#4C72B0', alpha=0.8)
+        ax.bar_label(bars, fmt='%.2f', padding=3, fontsize=8)
+        ax.set_xlabel("Proporción de hogares con privación", fontsize=11)
+        ax.set_xlim(0, 1.1)
+        ax.tick_params(labelsize=10)
         ax.grid(axis='x', alpha=0.3)
         plt.tight_layout()
         st.pyplot(fig)
         plt.close()
 
     with col_b:
-        st.markdown("**Distribución del IPM**")
-        fig, ax = plt.subplots(figsize=(7, 5))
-        ax.hist(df_vista['IPM'], bins=40, color='#DD8452', alpha=0.8, edgecolor='none')
-        ax.axvline(df_vista['IPM'].mean(), color='#c0392b', linestyle='--', linewidth=2,
-                   label=f"Promedio: {df_vista['IPM'].mean():.3f}")
-        ax.set_xlabel("IPM")
-        ax.set_ylabel("Número de hogares")
-        ax.legend()
-        ax.grid(alpha=0.3)
-        plt.tight_layout()
-        st.pyplot(fig)
-        plt.close()
+        st.markdown(f"**Ranking de departamentos — {variable_sel}**")
+        ranking = df.groupby('DEPT_NOMBRE')[variable_sel].mean().sort_values(ascending=False).reset_index()
+        ranking.columns = ['Departamento', 'Proporción con privación']
+        ranking['Proporción con privación'] = ranking['Proporción con privación'].round(3)
+        st.dataframe(ranking, use_container_width=True, hide_index=True, height=420)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -237,41 +302,63 @@ with tab2:
     with col1:
         st.markdown("**Varianza explicada**")
         fig, ax = plt.subplots(figsize=(7, 4))
-        ax.bar(range(1, len(var_exp)+1), var_exp, alpha=0.7, label='Varianza individual')
-        ax.step(range(1, len(var_cum)+1), var_cum, where='mid', linewidth=2, label='Varianza acumulada')
-        ax.axhline(0.70, color='orange', linestyle='--', linewidth=1.2, alpha=0.8)
-        ax.axhline(0.80, color='red', linestyle='--', linewidth=1.2, alpha=0.8)
-        ax.axvline(n_70, color='orange', linestyle=':', linewidth=1.2, alpha=0.8,
-                   label=f'{n_70} componentes → 70%')
-        ax.axvline(n_80, color='red', linestyle=':', linewidth=1.2, alpha=0.8,
-                   label=f'{n_80} componentes → 80%')
-        ax.set_xlabel("Componente principal")
-        ax.set_ylabel("Proporción de varianza")
+        ax.bar(range(1, len(var_exp)+1), var_exp, alpha=0.7, label='Varianza individual', color='#4C72B0')
+        ax.step(range(1, len(var_cum)+1), var_cum, where='mid', linewidth=2, label='Varianza acumulada', color='#1a4a7a')
+        ax.axhline(0.70, color='orange', linestyle='--', linewidth=1.2, alpha=0.9)
+        ax.axhline(0.80, color='red', linestyle='--', linewidth=1.2, alpha=0.9)
+        ax.axvline(n_70, color='orange', linestyle=':', linewidth=1.2, alpha=0.9, label=f'{n_70} componentes → 70%')
+        ax.axvline(n_80, color='red', linestyle=':', linewidth=1.2, alpha=0.9, label=f'{n_80} componentes → 80%')
+        ax.set_xlabel("Componente principal", fontsize=11)
+        ax.set_ylabel("Proporción de varianza", fontsize=11)
         ax.legend(fontsize=8)
         ax.grid(alpha=0.3)
         plt.tight_layout()
         st.pyplot(fig)
         plt.close()
 
+        st.markdown(f"""<div class='interp-box'>
+        La varianza se distribuye de forma gradual entre las 15 componentes — no hay un "codo" claro,
+        lo cual es típico de variables binarias con correlaciones moderadas.
+        Con <b>{n_70} componentes</b> se acumula el 70% de la varianza y con <b>{n_80}</b> el 80%.
+        El análisis usa <b>9 componentes</b> como punto de equilibrio entre simplicidad e información retenida.
+        </div>""", unsafe_allow_html=True)
+
     with col2:
         st.markdown("**Cargas de las primeras 4 componentes**")
         fig, ax = plt.subplots(figsize=(7, 5))
         sns.heatmap(loadings_df, ax=ax, cmap='RdBu_r', center=0,
                     annot=True, fmt='.2f', linewidths=0.5,
-                    cbar_kws={'label': 'Carga'})
-        ax.set_xlabel("Componente principal")
+                    cbar_kws={'label': 'Carga'}, annot_kws={'size': 9})
+        ax.set_xlabel("Componente principal", fontsize=11)
         ax.set_ylabel("")
+        ax.tick_params(labelsize=10)
         plt.tight_layout()
         st.pyplot(fig)
         plt.close()
 
-    st.markdown("**Proyección t-SNE — coloreado por IPM**")
-    fig, ax = plt.subplots(figsize=(10, 5))
+        st.markdown("""<div class='interp-box'>
+        <b>PC1</b> resume el déficit de infraestructura: acueducto, alcantarillado y pisos son las variables con mayor carga.<br><br>
+        <b>PC2</b> captura la brecha educativa en menores: inasistencia escolar, rezago y trabajo infantil tienen los valores más altos.<br><br>
+        <b>PC3</b> combina privaciones educativas con condiciones de vivienda, diferenciando entre ambos tipos de carencia.<br><br>
+        <b>PC4</b> está dominada por el aseguramiento en salud (0.67) — es la dimensión de acceso al sistema de salud.
+        </div>""", unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.markdown("**Proyección t-SNE — hogares coloreados por IPM**")
+    st.markdown("""<div class='interp-box'>
+    t-SNE proyecta los 87,060 hogares (representados por una muestra de 10,000) desde 9 dimensiones a 2,
+    preservando qué hogares son similares entre sí. El color indica el nivel de IPM:
+    tonos más oscuros corresponden a mayor privación. La ausencia de grupos perfectamente separados
+    es normal — la pobreza es un fenómeno continuo — pero sí se aprecian zonas con mayor concentración
+    de privación, lo que anticipa la estructura de los clusters.
+    </div>""", unsafe_allow_html=True)
+
+    fig, ax = plt.subplots(figsize=(10, 4.5))
     scatter = ax.scatter(X_tsne[:, 0], X_tsne[:, 1], c=ipm_vals,
-                         cmap='YlOrRd', alpha=0.4, s=6)
+                         cmap='YlOrRd', alpha=0.55, s=7)
     plt.colorbar(scatter, ax=ax, label='IPM')
-    ax.set_xlabel("t-SNE 1")
-    ax.set_ylabel("t-SNE 2")
+    ax.set_xlabel("t-SNE 1", fontsize=11)
+    ax.set_ylabel("t-SNE 2", fontsize=11)
     ax.grid(alpha=0.3)
     plt.tight_layout()
     st.pyplot(fig)
@@ -284,9 +371,11 @@ with tab2:
 with tab3:
     st.subheader("Resultados del Clustering")
 
-    metodo = st.radio("Método", ["K-Means", "Clustering Jerárquico"], horizontal=True)
+    st.markdown("### Seleccionar método")
+    metodo = st.radio("", ["K-Means", "Clustering Jerárquico"], horizontal=True, label_visibility="collapsed")
+    st.markdown("---")
+
     labels = labels_km if metodo == "K-Means" else labels_hc
-    colors = ['#e74c3c', '#3498db', '#2ecc71'] if metodo == "K-Means" else ['#4C72B0', '#DD8452', '#55A868']
 
     col1, col2 = st.columns(2)
 
@@ -296,11 +385,12 @@ with tab3:
         fig, ax = plt.subplots(figsize=(7, 5))
         for c in range(3):
             mask = labels_muestra == c
-            ax.scatter(X_tsne[mask, 0], X_tsne[mask, 1], c=colors[c],
-                       label=f'Cluster {c}', alpha=0.4, s=6, edgecolors='none')
-        ax.set_xlabel("t-SNE 1")
-        ax.set_ylabel("t-SNE 2")
-        ax.legend(markerscale=3)
+            ax.scatter(X_tsne[mask, 0], X_tsne[mask, 1], c=COLORS[c],
+                       label=f'Cluster {c} — {PERFILES[c]["nombre"]}',
+                       alpha=0.45, s=7, edgecolors='none')
+        ax.set_xlabel("t-SNE 1", fontsize=11)
+        ax.set_ylabel("t-SNE 2", fontsize=11)
+        ax.legend(markerscale=3, fontsize=9)
         ax.grid(alpha=0.3)
         plt.tight_layout()
         st.pyplot(fig)
@@ -313,13 +403,26 @@ with tab3:
         medias = X_df.groupby('cluster')[variables_ipm].mean()
         fig, ax = plt.subplots(figsize=(7, 5))
         sns.heatmap(medias.T, ax=ax, cmap='Blues', annot=True, fmt='.2f',
-                    linewidths=0.5, cbar_kws={'label': 'Proporción de hogares con privación'})
-        ax.set_xlabel("Cluster")
+                    linewidths=0.5, cbar_kws={'label': 'Proporción de hogares con privación'},
+                    annot_kws={'size': 9})
+        ax.set_xlabel("Cluster", fontsize=11)
         ax.set_ylabel("")
+        ax.tick_params(labelsize=10)
         plt.tight_layout()
         st.pyplot(fig)
         plt.close()
 
+    st.markdown("---")
+    st.markdown("**Perfiles identificados**")
+    cols_perf = st.columns(3)
+    for c, col in enumerate(cols_perf):
+        with col:
+            st.markdown(f"""<div class='interp-box'>
+            <b style='color:#1a4a7a'>Cluster {c} — {PERFILES[c]['nombre']}</b><br><br>
+            {PERFILES[c]['desc']}
+            </div>""", unsafe_allow_html=True)
+
+    st.markdown("---")
     st.markdown("**Resumen por cluster**")
     resumen = df.copy()
     resumen['cluster'] = labels
@@ -332,17 +435,20 @@ with tab3:
     tabla['IPM_promedio'] = tabla['IPM_promedio'].round(3)
     tabla['Pct_pobres'] = (tabla['Pct_pobres'] * 100).round(1)
     tabla['% del total'] = tabla['% del total'].round(1)
-    tabla.columns = ['Cluster', 'Hogares', 'IPM promedio', '% en pobreza', '% del total']
+    tabla['Perfil'] = tabla['cluster'].map({c: PERFILES[c]['nombre'] for c in range(3)})
+    tabla = tabla[['cluster', 'Perfil', 'Hogares', '% del total', 'IPM_promedio', 'Pct_pobres']]
+    tabla.columns = ['Cluster', 'Perfil', 'Hogares', '% del total', 'IPM promedio', '% en pobreza']
     st.dataframe(tabla, use_container_width=True, hide_index=True)
 
     if metodo == "Clustering Jerárquico":
+        st.markdown("---")
         st.markdown("**Dendrograma**")
         fig, ax = plt.subplots(figsize=(12, 4))
         dendrogram(Z, ax=ax, no_labels=True, color_threshold=0,
                    above_threshold_color='#2c3e50', truncate_mode='lastp', p=30)
         ax.axhline(y=97, color='#e74c3c', linestyle='--', linewidth=2, label='Corte → 3 clusters')
-        ax.set_ylabel('Distancia')
-        ax.legend()
+        ax.set_ylabel('Distancia', fontsize=11)
+        ax.legend(fontsize=10)
         plt.tight_layout()
         st.pyplot(fig)
         plt.close()
@@ -363,8 +469,15 @@ with tab4:
         'Cluster 2 — Déficit de infraestructura'
     ]
 
+    descripciones_territorio = {
+        0: "El perfil de baja privación domina en la mayor parte del territorio, especialmente en el centro del país. Bogotá, Cundinamarca, Antioquia, Santander y el eje cafetero concentran las proporciones más altas, lo que refleja su mayor acceso a servicios y desarrollo relativo.",
+        1: "La privación educativa no responde a una geografía específica — está dispersa a lo largo del país. Los hogares con estas carencias coexisten con otros perfiles en los mismos departamentos, lo que sugiere que este fenómeno es transversal y no exclusivo de una región.",
+        2: "El déficit de infraestructura se concentra claramente en la periferia del país: Chocó, La Guajira, Vichada, Guainía y Vaupés lideran la proporción de hogares en este grupo. Son los departamentos históricamente más rezagados en cobertura de servicios públicos."
+    }
+
     cluster_sel = st.radio("Seleccionar perfil", titulos_clusters, horizontal=True)
     c = titulos_clusters.index(cluster_sel)
+    st.markdown("---")
 
     prop = perfil_dept.groupby('DEPARTAMENTO').apply(
         lambda x: (x['cluster'] == c).mean()
@@ -375,41 +488,45 @@ with tab4:
     san_andres = mapa_c[mapa_c['dpto_ccdgo'] == 88]
     continental = mapa_c[mapa_c['dpto_ccdgo'] != 88]
 
-    fig, ax = plt.subplots(figsize=(10, 12))
+    col_mapa, col_info = st.columns([1, 1])
 
-    continental.plot(column='proporcion', ax=ax, cmap='Blues', edgecolor='lightgray',
-                     linewidth=0.5, vmin=0, vmax=1, legend=False)
+    with col_mapa:
+        fig, ax = plt.subplots(figsize=(6, 7))
+        continental.plot(column='proporcion', ax=ax, cmap='Blues', edgecolor='lightgray',
+                         linewidth=0.5, vmin=0, vmax=1, legend=False)
+        for _, row in continental.iterrows():
+            if row['geometry'] is not None:
+                centroid = row['geometry'].centroid
+                ax.annotate(row['dpto_cnmbr'].title(), xy=(centroid.x, centroid.y),
+                            ha='center', va='center', fontsize=4.5, color='black', fontweight='bold')
+        proporcion_sa = san_andres['proporcion'].values[0] if not san_andres.empty else 0
+        color_sa = plt.cm.Blues(proporcion_sa)
+        axins = ax.inset_axes([0.01, 0.78, 0.12, 0.08])
+        axins.add_patch(plt.Rectangle((0.3, 0), 0.3, 0.7, color=color_sa))
+        axins.set_xlim(0, 1)
+        axins.set_ylim(0, 1)
+        axins.set_axis_off()
+        axins.set_title('San Andrés', fontsize=6, fontweight='bold', pad=2)
+        sm = plt.cm.ScalarMappable(cmap='Blues', norm=plt.Normalize(vmin=0, vmax=1))
+        sm.set_array([])
+        cbar = fig.colorbar(sm, ax=ax, orientation='horizontal', shrink=0.6, pad=0.02)
+        cbar.set_label('Proporción de hogares', fontsize=9)
+        ax.set_title(cluster_sel, fontsize=13, fontweight='bold')
+        ax.set_axis_off()
+        plt.tight_layout()
+        st.pyplot(fig)
+        plt.close()
 
-    for _, row in continental.iterrows():
-        if row['geometry'] is not None:
-            centroid = row['geometry'].centroid
-            ax.annotate(row['dpto_cnmbr'].title(), xy=(centroid.x, centroid.y),
-                        ha='center', va='center', fontsize=5.5, color='black', fontweight='bold')
+    with col_info:
+        st.markdown("**Interpretación**")
+        st.markdown(f"<div class='interp-box'>{descripciones_territorio[c]}</div>", unsafe_allow_html=True)
 
-    proporcion_sa = san_andres['proporcion'].values[0] if not san_andres.empty else 0
-    color_sa = plt.cm.Blues(proporcion_sa)
-    axins = ax.inset_axes([0.01, 0.78, 0.12, 0.08])
-    axins.add_patch(plt.Rectangle((0.3, 0), 0.3, 0.7, color=color_sa))
-    axins.set_xlim(0, 1)
-    axins.set_ylim(0, 1)
-    axins.set_axis_off()
-    axins.set_title('San Andrés', fontsize=7, fontweight='bold', pad=2)
+        st.markdown("####")
+        st.markdown("**Top 10 departamentos**")
+        top10 = prop.copy()
+        top10['DEPARTAMENTO'] = top10['DEPARTAMENTO'].map(nombres_dept)
+        top10 = top10.dropna().sort_values('proporcion', ascending=False).head(10)
+        top10['proporcion'] = (top10['proporcion'] * 100).round(1)
+        top10.columns = ['Departamento', '% de hogares en este perfil']
+        st.dataframe(top10, use_container_width=True, hide_index=True)
 
-    sm = plt.cm.ScalarMappable(cmap='Blues', norm=plt.Normalize(vmin=0, vmax=1))
-    sm.set_array([])
-    cbar = fig.colorbar(sm, ax=ax, orientation='horizontal', shrink=0.5, pad=0.02)
-    cbar.set_label('Proporción de hogares', fontsize=10)
-
-    ax.set_title(cluster_sel, fontsize=15, fontweight='bold')
-    ax.set_axis_off()
-    plt.tight_layout()
-    st.pyplot(fig)
-    plt.close()
-
-    st.markdown("**Top 5 departamentos con mayor proporción**")
-    top5 = prop.copy()
-    top5['DEPARTAMENTO'] = top5['DEPARTAMENTO'].map(nombres_dept)
-    top5 = top5.dropna().sort_values('proporcion', ascending=False).head(5)
-    top5['proporcion'] = (top5['proporcion'] * 100).round(1)
-    top5.columns = ['Departamento', '% de hogares en este cluster']
-    st.dataframe(top5, use_container_width=True, hide_index=True)
