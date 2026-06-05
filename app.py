@@ -37,10 +37,12 @@ st.markdown("""
         padding: 2rem 0 1rem 0;
     }
     .header-title {
-        font-size: 2.4rem;
-        font-weight: 800;
+        font-size: 3.2rem;
+        font-weight: 900;
         color: #1a4a7a;
         margin-bottom: 0.3rem;
+        letter-spacing: -0.5px;
+        line-height: 1.1;
     }
     .header-subtitle {
         font-size: 1rem;
@@ -143,6 +145,24 @@ PERFILES = {
     }
 }
 
+PERFILES_HC = {
+    0: {
+        "nombre": "Baja privación",
+        "desc": "El grupo más amplio bajo clustering jerárquico. Hogares con empleo informal dominante pero acceso razonable a servicios y educación. La distancia de Ward minimiza la varianza intragrupo, agrupando aquí a los hogares con menores carencias generales.",
+        "variables_clave": ["empleo_formal"]
+    },
+    1: {
+        "nombre": "Privación educativa y salud",
+        "desc": "El clustering jerárquico resalta en este grupo la combinación de rezago escolar, trabajo infantil y barreras de acceso a salud. El método Ward tiende a crear grupos más compactos, por lo que este cluster es más homogéneo que en K-Means.",
+        "variables_clave": ["rezago_escolar", "trabajo_infantil", "barreras_acceso_salud"]
+    },
+    2: {
+        "nombre": "Déficit de infraestructura",
+        "desc": "Los hogares sin acueducto, alcantarillado ni materiales de vivienda adecuados forman el tercer grupo jerárquico. La estructura de árbol (dendrograma) confirma que estas carencias crean un sub-espacio claramente separado del resto.",
+        "variables_clave": ["acueducto", "alcantarillado", "pisos"]
+    }
+}
+
 # ── Carga y procesamiento (cacheado) ─────────────────────────────────────────
 @st.cache_data(show_spinner=False)
 def cargar_datos():
@@ -224,6 +244,9 @@ st.markdown("""
 <div class='header-container'>
     <div class='header-title'>Pobreza Multidimensional en Colombia</div>
     <div class='header-subtitle'>Análisis de clustering aplicado al Índice de Pobreza Multidimensional (IPM) · ECV 2025 · DANE</div>
+    <div style='margin-top:0.6rem;font-size:0.88rem;color:#888'>
+        Ana Sofía Salazar Álvarez &nbsp;·&nbsp; Johan Steven Avilan Peñaloza
+    </div>
 </div>
 """, unsafe_allow_html=True)
 st.divider()
@@ -236,56 +259,89 @@ tab1, tab2, tab3, tab4 = st.tabs(["📋  Datos", "📊  ACP", "🔵  Clustering"
 # PESTAÑA 1 — DATOS
 # ════════════════════════════════════════════════════════════════════════════
 with tab1:
-    st.subheader("Resumen general")
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.markdown(f"<div class='metric-card'><div class='metric-value'>{len(df):,}</div><div class='metric-label'>Total hogares</div></div>", unsafe_allow_html=True)
-    with col2:
-        st.markdown(f"<div class='metric-card'><div class='metric-value'>{df['POBRE'].mean()*100:.1f}%</div><div class='metric-label'>Hogares en pobreza</div></div>", unsafe_allow_html=True)
-    with col3:
-        st.markdown(f"<div class='metric-card'><div class='metric-value'>{df['IPM'].mean():.3f}</div><div class='metric-label'>IPM promedio</div></div>", unsafe_allow_html=True)
-    with col4:
-        st.markdown(f"<div class='metric-card'><div class='metric-value'>{df['DEPARTAMENTO'].nunique()}</div><div class='metric-label'>Departamentos</div></div>", unsafe_allow_html=True)
-
-    st.markdown("---")
     st.subheader("Exploración por filtros")
 
-    col_f1, col_f2 = st.columns([2, 1])
+    col_f1, col_f2 = st.columns([1, 1])
     with col_f1:
         depts_sel = st.multiselect(
             "Seleccionar departamentos (vacío = todos)",
             options=lista_depts,
             default=[]
         )
-    with col_f2:
-        variable_sel = st.selectbox("Variable para ranking", variables_ipm)
+        variables_sel = st.multiselect(
+            "Seleccionar variables (vacío = todas)",
+            options=variables_ipm,
+            default=[]
+        )
 
     df_filtrado = df.copy()
     if depts_sel:
         df_filtrado = df_filtrado[df_filtrado['DEPT_NOMBRE'].isin(depts_sel)]
 
-    col_a, col_b = st.columns(2)
+    vars_a_mostrar = variables_sel if variables_sel else variables_ipm
 
-    with col_a:
-        st.markdown("**Proporción de privaciones**")
-        privaciones = df_filtrado[variables_ipm].mean().sort_values(ascending=True)
-        fig, ax = plt.subplots(figsize=(7, 5))
-        bars = ax.barh(privaciones.index, privaciones.values, color='#4C72B0', alpha=0.8)
-        ax.bar_label(bars, fmt='%.2f', padding=3, fontsize=8)
-        ax.set_xlabel("Proporción de hogares con privación", fontsize=11)
-        ax.set_xlim(0, 1.1)
-        ax.tick_params(labelsize=10)
+    st.markdown("---")
+
+    # Layout 50 / 25 / 25
+    col_graf, col_tabla, col_cards = st.columns([2, 1, 1])
+
+    with col_graf:
+        st.markdown("**Privaciones por departamento y variable**")
+        dept_var = df_filtrado.groupby('DEPT_NOMBRE')[vars_a_mostrar].mean()
+        # Limitar a max 20 departamentos para legibilidad
+        if len(dept_var) > 20:
+            dept_var = dept_var.head(20)
+        fig, ax = plt.subplots(figsize=(9, max(5, len(dept_var) * 0.45)))
+        dept_var_sorted = dept_var.mean(axis=1).sort_values(ascending=True)
+        dept_var = dept_var.loc[dept_var_sorted.index]
+        x = np.arange(len(dept_var))
+        n_vars = len(vars_a_mostrar)
+        bar_width = 0.8 / n_vars
+        colors_vars = plt.cm.tab20.colors
+        for i, var in enumerate(vars_a_mostrar):
+            if var in dept_var.columns:
+                offset = (i - n_vars / 2) * bar_width + bar_width / 2
+                ax.barh(x + offset, dept_var[var].values, height=bar_width,
+                        label=var, color=colors_vars[i % len(colors_vars)], alpha=0.85)
+        ax.set_yticks(x)
+        ax.set_yticklabels(dept_var.index, fontsize=8)
+        ax.set_xlabel("Proporción de hogares con privación", fontsize=10)
+        ax.set_xlim(0, 1.15)
         ax.grid(axis='x', alpha=0.3)
+        if n_vars <= 10:
+            ax.legend(fontsize=7, loc='lower right', ncol=2)
         plt.tight_layout()
         st.pyplot(fig)
         plt.close()
 
-    with col_b:
-        st.markdown(f"**Ranking de departamentos — {variable_sel}**")
-        ranking = df.groupby('DEPT_NOMBRE')[variable_sel].mean().sort_values(ascending=False).reset_index()
-        ranking.columns = ['Departamento', 'Proporción con privación']
-        ranking['Proporción con privación'] = ranking['Proporción con privación'].round(3)
-        st.dataframe(ranking, use_container_width=True, hide_index=True, height=420)
+    with col_tabla:
+        st.markdown("**Ranking por IPM promedio**")
+        ranking = df_filtrado.groupby('DEPT_NOMBRE')[vars_a_mostrar + ['IPM', 'POBRE']].mean().reset_index()
+        ranking_tabla = ranking[['DEPT_NOMBRE', 'IPM', 'POBRE']].copy()
+        ranking_tabla.columns = ['Departamento', 'IPM promedio', '% pobreza']
+        ranking_tabla['IPM promedio'] = ranking_tabla['IPM promedio'].round(3)
+        ranking_tabla['% pobreza'] = (ranking_tabla['% pobreza'] * 100).round(1)
+        ranking_tabla = ranking_tabla.sort_values('IPM promedio', ascending=False)
+        st.dataframe(ranking_tabla, use_container_width=True, hide_index=True, height=460)
+
+    with col_cards:
+        st.markdown("**Indicadores del filtro**")
+        n_hogares = len(df_filtrado)
+        pct_pobres = df_filtrado['POBRE'].mean() * 100
+        ipm_prom = df_filtrado['IPM'].mean()
+        n_depts = df_filtrado['DEPARTAMENTO'].nunique()
+        var_critica = df_filtrado[vars_a_mostrar].mean().idxmax() if vars_a_mostrar else "—"
+        var_critica_val = df_filtrado[vars_a_mostrar].mean().max() if vars_a_mostrar else 0
+
+        tarjetas = [
+            (f"{n_hogares:,}", "Hogares en selección"),
+            (f"{pct_pobres:.1f}%", "En pobreza multidimensional"),
+            (f"{ipm_prom:.3f}", "IPM promedio"),
+            (f"{n_depts}", "Departamentos incluidos"),
+        ]
+        for val, label in tarjetas:
+            st.markdown(f"<div class='metric-card' style='margin-bottom:10px'><div class='metric-value'>{val}</div><div class='metric-label'>{label}</div></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='metric-card' style='margin-bottom:10px;border-left:4px solid #e74c3c'><div class='metric-value' style='font-size:1.1rem;color:#c0392b'>{var_critica}</div><div class='metric-label'>Variable con mayor privación ({var_critica_val:.2f})</div></div>", unsafe_allow_html=True)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -345,13 +401,6 @@ with tab2:
 
     st.markdown("---")
     st.markdown("**Proyección t-SNE — hogares coloreados por IPM**")
-    st.markdown("""<div class='interp-box'>
-    t-SNE proyecta los 87,060 hogares (representados por una muestra de 10,000) desde 9 dimensiones a 2,
-    preservando qué hogares son similares entre sí. El color indica el nivel de IPM:
-    tonos más oscuros corresponden a mayor privación. La ausencia de grupos perfectamente separados
-    es normal — la pobreza es un fenómeno continuo — pero sí se aprecian zonas con mayor concentración
-    de privación, lo que anticipa la estructura de los clusters.
-    </div>""", unsafe_allow_html=True)
 
     fig, ax = plt.subplots(figsize=(10, 4.5))
     scatter = ax.scatter(X_tsne[:, 0], X_tsne[:, 1], c=ipm_vals,
@@ -364,6 +413,16 @@ with tab2:
     st.pyplot(fig)
     plt.close()
 
+    st.markdown("---")
+    st.markdown("**Perfiles identificados por clustering**")
+    cols_perf_acp = st.columns(3)
+    for c, col in enumerate(cols_perf_acp):
+        with col:
+            st.markdown(f"""<div class='interp-box' style='height:100%'>
+            <b style='color:#1a4a7a'>Cluster {c} — {PERFILES[c]['nombre']}</b><br><br>
+            {PERFILES[c]['desc']}
+            </div>""", unsafe_allow_html=True)
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # PESTAÑA 3 — CLUSTERING
@@ -371,11 +430,25 @@ with tab2:
 with tab3:
     st.subheader("Resultados del Clustering")
 
-    st.markdown("### Seleccionar método")
-    metodo = st.radio("", ["K-Means", "Clustering Jerárquico"], horizontal=True, label_visibility="collapsed")
+    st.markdown("**Seleccionar método de clustering:**")
+    col_btn1, col_btn2, col_btn_rest = st.columns([1, 1, 4])
+    with col_btn1:
+        btn_km = st.button("🔵 K-Means", use_container_width=True,
+                           type="primary" if st.session_state.get("metodo_clustering", "K-Means") == "K-Means" else "secondary")
+    with col_btn2:
+        btn_hc = st.button("🌳 Jerárquico", use_container_width=True,
+                           type="primary" if st.session_state.get("metodo_clustering", "K-Means") == "Clustering Jerárquico" else "secondary")
+
+    if btn_km:
+        st.session_state["metodo_clustering"] = "K-Means"
+    if btn_hc:
+        st.session_state["metodo_clustering"] = "Clustering Jerárquico"
+
+    metodo = st.session_state.get("metodo_clustering", "K-Means")
     st.markdown("---")
 
     labels = labels_km if metodo == "K-Means" else labels_hc
+    perfiles_activos = PERFILES if metodo == "K-Means" else PERFILES_HC
 
     col1, col2 = st.columns(2)
 
@@ -386,7 +459,7 @@ with tab3:
         for c in range(3):
             mask = labels_muestra == c
             ax.scatter(X_tsne[mask, 0], X_tsne[mask, 1], c=COLORS[c],
-                       label=f'Cluster {c} — {PERFILES[c]["nombre"]}',
+                       label=f'Cluster {c} — {perfiles_activos[c]["nombre"]}',
                        alpha=0.45, s=7, edgecolors='none')
         ax.set_xlabel("t-SNE 1", fontsize=11)
         ax.set_ylabel("t-SNE 2", fontsize=11)
@@ -418,8 +491,8 @@ with tab3:
     for c, col in enumerate(cols_perf):
         with col:
             st.markdown(f"""<div class='interp-box'>
-            <b style='color:#1a4a7a'>Cluster {c} — {PERFILES[c]['nombre']}</b><br><br>
-            {PERFILES[c]['desc']}
+            <b style='color:#1a4a7a'>Cluster {c} — {perfiles_activos[c]['nombre']}</b><br><br>
+            {perfiles_activos[c]['desc']}
             </div>""", unsafe_allow_html=True)
 
     st.markdown("---")
@@ -435,7 +508,7 @@ with tab3:
     tabla['IPM_promedio'] = tabla['IPM_promedio'].round(3)
     tabla['Pct_pobres'] = (tabla['Pct_pobres'] * 100).round(1)
     tabla['% del total'] = tabla['% del total'].round(1)
-    tabla['Perfil'] = tabla['cluster'].map({c: PERFILES[c]['nombre'] for c in range(3)})
+    tabla['Perfil'] = tabla['cluster'].map({c: perfiles_activos[c]['nombre'] for c in range(3)})
     tabla = tabla[['cluster', 'Perfil', 'Hogares', '% del total', 'IPM_promedio', 'Pct_pobres']]
     tabla.columns = ['Cluster', 'Perfil', 'Hogares', '% del total', 'IPM promedio', '% en pobreza']
     st.dataframe(tabla, use_container_width=True, hide_index=True)
