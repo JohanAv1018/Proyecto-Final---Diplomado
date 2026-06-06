@@ -19,10 +19,10 @@ Los datos provienen de la Encuesta Nacional de Calidad de Vida (ECV 2025) del DA
 
 ```
 ├── MGN2024_DPTO_POLITICO/                                <--- Carpeta obtenida del geoportal del DANE usada para visualizaciones
-├── app.py                                                <--- Aplicación en streamlit del proyecto
 ├── Clustering_Pobreza_Multidimensional_Colombia.ipynb    <--- Notebook
 ├── IPM2025.csv                                           <--- Dataset
 ├── README.md                                             <--- Archivo README con descripción e instrucciones
+├── app.py                                                <--- Aplicación en streamlit del proyecto
 └── requirements.txt                                      <--- Archivo de texto con las librerías necesarias
 ```
 
