@@ -36,3 +36,7 @@ Los datos provienen de la Encuesta Nacional de Calidad de Vida (ECV 2025) del DA
 
 Se identificaron tres perfiles de pobreza: hogares con baja privación general (79%), hogares con privación educativa severa (3.3%) y hogares con déficit de infraestructura y servicios básicos (17.5%). 
 Los dos últimos perfiles tienen una distribución territorial diferenciada dentro del país.
+
+## Aplicación en Streamlit
+
+https://pobreza-multidimensional-colombia.streamlit.app/
